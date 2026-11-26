@@ -150,6 +150,19 @@
   </div>
 </div>
 
+<div class="modal hidden" id="resModal">
+  <div class="box">
+    <h3>Resume membership</h3>
+    <div class="meta" id="resInfo"></div>
+    <div style="margin-top:10px"><label for="resDate">Resume date</label><input id="resDate" type="date"></div>
+    <div class="bal" id="resCalc" style="margin:10px 0"></div>
+    <div class="row">
+      <button type="button" class="primary" id="resOk">Resume and move due date</button>
+      <button type="button" class="small" id="resCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="smsModal">
   <div class="box">
     <h3>Text reminder</h3>
@@ -168,6 +181,7 @@
 const KEY = 'membership-reminders-v1';
 let members = [];
 try { members = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
+members.forEach(m => { if (m.hold && !m.holdFrom) m.holdFrom = toISO(new Date()); });
 
 const $ = id => document.getElementById(id);
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(members)); } catch (e) {} };
@@ -234,6 +248,7 @@ function rowHTML(m) {
       '<div><label>Balance (₱)</label><input data-f="bal" type="number" step="0.01" inputmode="decimal" value="' + (parseFloat(m.balance) || 0) + '"></div>' +
       '<div><label>Renews every</label><select data-f="cycle">' + opts + '</select></div>' +
       '<div class="full"><label>Due date</label><input data-f="due" type="date" value="' + m.due + '"></div>' +
+      (m.hold ? '<div class="full"><label>Hold started</label><input data-f="holdFrom" type="date" value="' + (m.holdFrom || '') + '"></div>' : '') +
       '</div><div class="actions"><button type="button" class="small primary" data-act="save" data-id="' + m.id + '">Save</button>' +
       '<button type="button" class="small" data-act="cancel" data-id="' + m.id + '">Cancel</button></div></div>';
   }
@@ -244,6 +259,7 @@ function rowHTML(m) {
     '<div class="duedate ' + tcls + '">' + fmt(m.due) + '</div>' +
     '<div class="bal">Balance: ' + money(m.balance) + '</div>' +
     '<div class="meta">Renews every ' + m.cycle + ' mo' + (m.phone ? ' · ' + esc(m.phone) : '') + '</div>' +
+    (m.hold ? '<div class="meta"><b>On hold since ' + fmt(m.holdFrom) + '</b> (' + holdDays(m, toISO(new Date())) + ' days so far). The due date moves forward by the days held when you resume.</div>' : '') +
     '<div class="actions"><button type="button" class="small" data-act="edit" data-id="' + m.id + '">Edit</button>' +
     (m.phone ? '<button type="button" class="small" data-act="sms" data-id="' + m.id + '">Text reminder</button>' : '') +
     '<button type="button" class="small" data-act="hold" data-id="' + m.id + '">' + (m.hold ? 'Resume' : 'Hold') + '</button>' +
@@ -362,7 +378,10 @@ function handleAction(e) {
   const act = btn.dataset.act;
   if (act === 'edit') { editingId = m.id; render(); return; }
   if (act === 'cancel') { editingId = null; render(); return; }
-  if (act === 'hold') { m.hold = !m.hold; save(); render(); return; }
+  if (act === 'hold') {
+    if (m.hold) { showResume(m); return; }
+    m.hold = true; m.holdFrom = toISO(new Date()); save(); render(); return;
+  }
   if (act === 'sms') {
     const d = parseDate(m.due).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
     const verb = daysLeft(m.due) < 0 ? 'was due on' : 'is due on';
@@ -379,6 +398,7 @@ function handleAction(e) {
     if (!name) { alert('Please enter a member name.'); return; }
     if (!due) { alert('Please pick a due date.'); return; }
     m.name = name; m.due = due; m.cycle = +get('cycle'); m.balance = parseFloat(get('bal')) || 0; m.phone = get('phone').trim();
+    if (m.hold) { const hf = box.querySelector('[data-f="holdFrom"]'); if (hf && hf.value) m.holdFrom = hf.value; }
     editingId = null; save(); render(); return;
   }
   if (btn.dataset.act === 'paid') {
@@ -391,6 +411,37 @@ function handleAction(e) {
   save(); render();
 }
 $('list').addEventListener('click', handleAction);
+
+/* ---------- hold / resume ---------- */
+function holdDays(m, endISO) {
+  if (!m.holdFrom || !endISO) return 0;
+  return Math.max(0, Math.round((parseDate(endISO) - parseDate(m.holdFrom)) / 86400000));
+}
+function addDays(s, n) { const d = parseDate(s); d.setDate(d.getDate() + n); return toISO(d); }
+let resId = null;
+function updRes() {
+  const m = members.find(x => x.id === resId); if (!m) return;
+  const end = $('resDate').value;
+  if (!end) { $('resCalc').textContent = 'Pick a resume date.'; return; }
+  const n = holdDays(m, end);
+  $('resCalc').textContent = 'Held ' + n + (n === 1 ? ' day' : ' days') + '. New due date: ' + fmt(addDays(m.due, n));
+}
+function showResume(m) {
+  resId = m.id;
+  $('resInfo').textContent = m.name + ' · on hold since ' + fmt(m.holdFrom) + ' · current due date ' + fmt(m.due);
+  $('resDate').value = toISO(new Date());
+  $('resModal').classList.remove('hidden');
+  updRes();
+}
+$('resDate').addEventListener('input', updRes);
+$('resCancel').addEventListener('click', () => $('resModal').classList.add('hidden'));
+$('resOk').addEventListener('click', () => {
+  const m = members.find(x => x.id === resId); if (!m) return;
+  const end = $('resDate').value; if (!end) { alert('Please pick a resume date.'); return; }
+  m.due = addDays(m.due, holdDays(m, end));
+  m.hold = false; m.holdFrom = '';
+  save(); $('resModal').classList.add('hidden'); render();
+});
 
 /* ---------- text reminder ---------- */
 let smsNum = '';
@@ -434,7 +485,7 @@ $('restoreFile').addEventListener('change', e => {
       if (!Array.isArray(arr)) throw new Error('bad format');
       const clean = arr.filter(x => x && x.name && /^\d{4}-\d{2}-\d{2}$/.test(x.due)).map((x, i) => ({
         id: x.id || (Date.now().toString(36) + i), name: String(x.name), due: x.due,
-        cycle: [1,3,6,12].includes(+x.cycle) ? +x.cycle : 12, balance: parseFloat(x.balance) || 0, hold: !!x.hold, phone: String(x.phone || '')
+        cycle: [1,3,6,12].includes(+x.cycle) ? +x.cycle : 12, balance: parseFloat(x.balance) || 0, hold: !!x.hold, phone: String(x.phone || ''), holdFrom: x.hold ? (x.holdFrom || toISO(new Date())) : ''
       }));
       if (!clean.length) throw new Error('empty');
       if (!confirm('Replace the current list (' + members.length + ' members) with ' + clean.length + ' members from this backup?')) return;
