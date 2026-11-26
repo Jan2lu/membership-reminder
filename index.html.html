@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Membership Due Date Reminder</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1f2430; --muted:#6b7280; --line:#e5e7eb;
+          --red:#dc2626; --amber:#d97706; --green:#16a34a; --blue:#2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161b; --card:#1d2027; --text:#e8eaed; --muted:#9aa0aa; --line:#2c303a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:640px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  form { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  form .full { grid-column:1 / -1; }
+  label { font-size:.8rem; color:var(--muted); display:block; margin-bottom:4px; }
+  input, select { width:100%; padding:10px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); }
+  button { cursor:pointer; font-size:.95rem; border:0; border-radius:8px; padding:10px 14px; }
+  .primary { background:var(--blue); color:#fff; font-weight:600; }
+  .small { padding:6px 10px; font-size:.8rem; background:var(--bg); color:var(--text); border:1px solid var(--line); }
+
+  /* search + tabs */
+  .search { position:sticky; top:0; z-index:5; background:var(--bg); padding:6px 0 10px; }
+  .search input { font-size:1rem; padding:12px 14px; border-radius:10px; }
+  .hint { font-size:.78rem; color:var(--muted); margin-top:4px; min-height:1em; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:4px; }
+  .tab { flex:1; background:transparent; color:var(--muted); font-weight:600; padding:9px; }
+  .tab.active { background:var(--blue); color:#fff; }
+  .hidden { display:none; }
+
+  .summary { display:flex; gap:8px; margin-bottom:14px; }
+  .pill { flex:1; text-align:center; padding:10px 4px; border-radius:10px; background:var(--card); border:1px solid var(--line); }
+  .pill b { display:block; font-size:1.3rem; }
+  .pill span { font-size:.75rem; color:var(--muted); }
+  #banner { display:none; color:#fff; padding:10px 14px; border-radius:10px; margin-bottom:14px; font-size:.9rem; }
+
+  /* list items */
+  .item { display:flex; align-items:center; gap:12px; justify-content:space-between; }
+  .item + .item { border-top:1px solid var(--line); margin-top:12px; padding-top:12px; }
+  .name { font-weight:600; font-size:1rem; }
+  .duedate { font-size:1.5rem; font-weight:800; line-height:1.2; margin:2px 0; letter-spacing:-.2px; }
+  .duedate.overdue-t { color:var(--red); }
+  .duedate.soon-t { color:var(--amber); }
+  .meta { font-size:.82rem; color:var(--muted); }
+  .badge { font-size:.75rem; font-weight:700; padding:4px 9px; border-radius:99px; color:#fff; white-space:nowrap; align-self:flex-start; }
+  .overdue { background:var(--red); } .soon { background:var(--amber); } .ok { background:var(--green); } .hold { background:#6b7280; }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .toolbar .small { padding:10px 14px; font-size:.9rem; }
+  .toolbar .note { font-size:.78rem; color:var(--muted); flex-basis:100%; }
+  .actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .empty { text-align:center; color:var(--muted); padding:20px 0; }
+
+  .bal { font-size:1rem; font-weight:700; margin:2px 0; }
+  .editbox { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .editbox .full { grid-column:1 / -1; }
+  .editbox input, .editbox select { padding:8px; font-size:.95rem; }
+  .item.editing { flex-direction:column; align-items:stretch; }
+
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; z-index:20; }
+  .modal.hidden { display:none; }
+  .modal .box { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; width:100%; max-width:440px; }
+  .modal h3 { margin:0 0 2px; font-size:1.1rem; }
+  .modal textarea { width:100%; min-height:130px; padding:10px; font-size:1rem; font-family:inherit; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); margin:10px 0; resize:vertical; }
+  .modal .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .btnlink { display:inline-block; text-decoration:none; font-size:.95rem; border-radius:8px; padding:10px 14px; text-align:center; flex:1; }
+
+  /* calendar */
+  .calhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .calhead h2 { margin:0; font-size:1.15rem; }
+  .calhead .nav { display:flex; gap:6px; }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .dow { text-align:center; font-size:.72rem; color:var(--muted); font-weight:600; padding:4px 0; }
+  .day { position:relative; aspect-ratio:1; border-radius:8px; background:var(--bg); border:1px solid var(--line);
+         display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:.95rem; padding:0; color:var(--text); }
+  .day.blank { background:transparent; border:0; cursor:default; }
+  .day.today { border:2px solid var(--blue); font-weight:700; }
+  .day.sel { background:var(--blue); color:#fff; }
+  .day .cnt { font-size:.68rem; font-weight:800; color:#fff; border-radius:99px; min-width:18px; padding:1px 5px; margin-top:2px; }
+  .cnt.overdue { background:var(--red); } .cnt.soon { background:var(--amber); } .cnt.ok { background:var(--green); }
+  .selhead { font-size:1.2rem; font-weight:800; margin-bottom:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Membership Reminders</h1>
+  <div class="sub" id="today"></div>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="Search name or date (e.g. Maria, Nov 15, 2026-12)" autocomplete="off">
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div class="tabs">
+    <button type="button" class="tab active" id="tabList" data-tab="list">List</button>
+    <button type="button" class="tab" id="tabCal" data-tab="cal">Calendar</button>
+  </div>
+
+  <div id="banner"></div>
+
+  <!-- LIST TAB -->
+  <div id="viewList">
+    <div class="summary">
+      <div class="pill"><b id="cOver">0</b><span>Overdue</span></div>
+      <div class="pill"><b id="cSoon">0</b><span>Due in 7 days</span></div>
+      <div class="pill"><b id="cTotal">0</b><span>Total</span></div>
+    </div>
+
+    <div class="card">
+      <form id="form">
+        <div class="full"><label for="name">Member name</label><input id="name" placeholder="e.g. Juan Dela Cruz"></div>
+        <div class="full"><label for="phone">Mobile number (for text reminders)</label><input id="phone" type="tel" inputmode="tel" placeholder="e.g. 0917 123 4567"></div>
+        <div><label for="bal">Balance (₱)</label><input id="bal" type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+        <div><label for="cycle">Renews every</label>
+          <select id="cycle"><option value="1">1 month</option><option value="3">3 months</option><option value="6">6 months</option><option value="12" selected>12 months</option></select>
+        </div>
+        <div class="full"><label for="due">Due date</label><input id="due" type="date"></div>
+        <div class="full"><button class="primary" type="button" id="addBtn" style="width:100%">Add member</button></div>
+      </form>
+    </div>
+
+    <div class="card" id="list"></div>
+
+    <div class="card toolbar">
+      <button type="button" class="small" id="backupBtn">Back up</button>
+      <button type="button" class="small" id="restoreBtn">Restore</button>
+      <input type="file" id="restoreFile" accept=".json,application/json" class="hidden">
+      <div class="note">Back up saves all members to a file. Restore loads a backup file and replaces the current list.</div>
+    </div>
+  </div>
+
+  <!-- CALENDAR TAB -->
+  <div id="viewCal" class="hidden">
+    <div class="card">
+      <div class="calhead">
+        <h2 id="calTitle"></h2>
+        <div class="nav">
+          <button type="button" class="small" id="prevM">&lsaquo; Prev</button>
+          <button type="button" class="small" id="todayM">Today</button>
+          <button type="button" class="small" id="nextM">Next &rsaquo;</button>
+        </div>
+      </div>
+      <div class="grid" id="calGrid"></div>
+    </div>
+    <div class="card" id="dayPanel"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="smsModal">
+  <div class="box">
+    <h3>Text reminder</h3>
+    <div class="meta" id="smsTo"></div>
+    <textarea id="smsText"></textarea>
+    <div class="row">
+      <a id="smsGo" class="btnlink primary" href="#">Open Messages</a>
+      <button type="button" class="small" id="smsCopy">Copy message</button>
+      <button type="button" class="small" id="smsClose">Close</button>
+    </div>
+    <div class="meta" style="margin-top:8px">If Messages doesn't open, copy the message and paste it into your texting app.</div>
+  </div>
+</div>
+
+<script>
+const KEY = 'membership-reminders-v1';
+let members = [];
+try { members = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
+
+const $ = id => document.getElementById(id);
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(members)); } catch (e) {} };
+
+function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+function parseDate(s) { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
+function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function addMonths(s, n) {
+  const d = parseDate(s), day = d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth() + n);
+  const last = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  d.setDate(Math.min(day, last));
+  return toISO(d);
+}
+function daysLeft(s) { return Math.round((parseDate(s) - startOfDay(new Date())) / 86400000); }
+function fmt(s) { return parseDate(s).toLocaleDateString('en-US', { weekday:'short', year:'numeric', month:'short', day:'numeric' }); }
+function esc(t) { return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function status(n) {
+  if (n < 0) return { cls:'overdue', text:'Overdue by ' + Math.abs(n) + (Math.abs(n)===1?' day':' days') };
+  if (n === 0) return { cls:'soon', text:'Due today' };
+  if (n <= 7) return { cls:'soon', text:'Due in ' + n + (n===1?' day':' days') };
+  return { cls:'ok', text:'In ' + n + ' days' };
+}
+
+/* ---------- search ---------- */
+function haystack(m) {
+  const d = parseDate(m.due);
+  return [
+    m.name, m.due,
+    d.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' }),
+    d.toLocaleDateString('en-US', { weekday:'short', year:'numeric', month:'short', day:'numeric' })
+  ].join(' ').toLowerCase();
+}
+function filtered() {
+  const tokens = $('q').value.toLowerCase().replace(/,/g,' ').split(/\s+/).filter(Boolean);
+  if (!tokens.length) return members.slice();
+  return members.filter(m => { const h = haystack(m); return tokens.every(t => h.includes(t)); });
+}
+
+/* ---------- tabs ---------- */
+let tab = 'list';
+function setTab(t) {
+  tab = t;
+  $('viewList').classList.toggle('hidden', t !== 'list');
+  $('viewCal').classList.toggle('hidden', t !== 'cal');
+  $('tabList').classList.toggle('active', t === 'list');
+  $('tabCal').classList.toggle('active', t === 'cal');
+  render();
+}
+$('tabList').addEventListener('click', () => setTab('list'));
+$('tabCal').addEventListener('click', () => setTab('cal'));
+
+/* ---------- member row (shared) ---------- */
+let editingId = null;
+function money(v) { return '₱' + (parseFloat(v) || 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+
+function rowHTML(m) {
+  if (m.id === editingId) {
+    const opts = [1,3,6,12].map(c => '<option value="' + c + '"' + (c === m.cycle ? ' selected' : '') + '>' + c + (c === 1 ? ' month' : ' months') + '</option>').join('');
+    return '<div class="item editing"><div class="editbox">' +
+      '<div class="full"><label>Member name</label><input data-f="name" value="' + esc(m.name) + '"></div>' +
+      '<div class="full"><label>Mobile number</label><input data-f="phone" type="tel" inputmode="tel" value="' + esc(m.phone || '') + '"></div>' +
+      '<div><label>Balance (₱)</label><input data-f="bal" type="number" step="0.01" inputmode="decimal" value="' + (parseFloat(m.balance) || 0) + '"></div>' +
+      '<div><label>Renews every</label><select data-f="cycle">' + opts + '</select></div>' +
+      '<div class="full"><label>Due date</label><input data-f="due" type="date" value="' + m.due + '"></div>' +
+      '</div><div class="actions"><button type="button" class="small primary" data-act="save" data-id="' + m.id + '">Save</button>' +
+      '<button type="button" class="small" data-act="cancel" data-id="' + m.id + '">Cancel</button></div></div>';
+  }
+  const n = daysLeft(m.due), s = m.hold ? { cls:'hold', text:'On hold' } : status(n);
+  const tcls = m.hold ? '' : (n < 0 ? 'overdue-t' : (n <= 7 ? 'soon-t' : ''));
+  return '<div class="item"><div>' +
+    '<div class="name">' + esc(m.name) + '</div>' +
+    '<div class="duedate ' + tcls + '">' + fmt(m.due) + '</div>' +
+    '<div class="bal">Balance: ' + money(m.balance) + '</div>' +
+    '<div class="meta">Renews every ' + m.cycle + ' mo' + (m.phone ? ' · ' + esc(m.phone) : '') + '</div>' +
+    '<div class="actions"><button type="button" class="small" data-act="edit" data-id="' + m.id + '">Edit</button>' +
+    (m.phone ? '<button type="button" class="small" data-act="sms" data-id="' + m.id + '">Text reminder</button>' : '') +
+    '<button type="button" class="small" data-act="hold" data-id="' + m.id + '">' + (m.hold ? 'Resume' : 'Hold') + '</button>' +
+    (m.hold ? '' : '<button type="button" class="small" data-act="paid" data-id="' + m.id + '">Mark paid</button>') +
+    '<button type="button" class="small" data-act="del" data-id="' + m.id + '">Remove</button></div>' +
+    '</div><span class="badge ' + s.cls + '">' + s.text + '</span></div>';
+}
+
+/* ---------- list view ---------- */
+function renderList() {
+  const over = members.filter(m => !m.hold && daysLeft(m.due) < 0);
+  const soon = members.filter(m => { const n = daysLeft(m.due); return !m.hold && n >= 0 && n <= 7; });
+  $('cOver').textContent = over.length;
+  $('cSoon').textContent = soon.length;
+  $('cTotal').textContent = members.length;
+
+  const b = $('banner');
+  if (over.length || soon.length) {
+    const parts = [];
+    if (over.length) parts.push(over.length + ' overdue');
+    if (soon.length) parts.push(soon.length + ' due within 7 days');
+    b.textContent = 'Heads up: ' + parts.join(', ') + '.';
+    b.style.display = 'block';
+    b.style.background = over.length ? 'var(--red)' : 'var(--amber)';
+  } else b.style.display = 'none';
+
+  const list = $('list');
+  const shown = filtered().sort((a,b) => a.due.localeCompare(b.due));
+  if (!members.length) { list.innerHTML = '<div class="empty">No members yet. Add one above.</div>'; return; }
+  if (!shown.length) { list.innerHTML = '<div class="empty">No members match your search.</div>'; return; }
+  list.innerHTML = shown.map(rowHTML).join('');
+}
+
+/* ---------- calendar view ---------- */
+const now0 = new Date();
+let viewY = now0.getFullYear(), viewM = now0.getMonth(), selISO = toISO(now0);
+
+function renderCal() {
+  $('banner').style.display = 'none';
+  const shown = filtered();
+  const byDay = {};
+  shown.forEach(m => { (byDay[m.due] = byDay[m.due] || []).push(m); });
+
+  $('calTitle').textContent = new Date(viewY, viewM, 1).toLocaleDateString('en-US', { month:'long', year:'numeric' });
+  const first = new Date(viewY, viewM, 1).getDay();
+  const days = new Date(viewY, viewM + 1, 0).getDate();
+  const todayISO = toISO(new Date());
+
+  let html = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => '<div class="dow">' + d + '</div>').join('');
+  for (let i = 0; i < first; i++) html += '<div class="day blank"></div>';
+  for (let d = 1; d <= days; d++) {
+    const iso = toISO(new Date(viewY, viewM, d));
+    const list = byDay[iso] || [];
+    let cls = 'day' + (iso === todayISO ? ' today' : '') + (iso === selISO ? ' sel' : '');
+    let badge = '';
+    if (list.length) {
+      const n = daysLeft(iso);
+      badge = '<span class="cnt ' + (list.every(x => x.hold) ? 'hold' : n < 0 ? 'overdue' : n <= 7 ? 'soon' : 'ok') + '">' + list.length + '</span>';
+    }
+    html += '<button type="button" class="' + cls + '" data-iso="' + iso + '">' + d + badge + '</button>';
+  }
+  $('calGrid').innerHTML = html;
+
+  const dayList = byDay[selISO] || [];
+  const head = '<div class="selhead">' + fmt(selISO) + '</div>';
+  $('dayPanel').innerHTML = head + (dayList.length
+    ? dayList.map(rowHTML).join('')
+    : '<div class="empty">No memberships due on this date.</div>');
+}
+
+$('prevM').addEventListener('click', () => { viewM--; if (viewM < 0) { viewM = 11; viewY--; } renderCal(); });
+$('nextM').addEventListener('click', () => { viewM++; if (viewM > 11) { viewM = 0; viewY++; } renderCal(); });
+$('todayM').addEventListener('click', () => { const t = new Date(); viewY = t.getFullYear(); viewM = t.getMonth(); selISO = toISO(t); renderCal(); });
+$('calGrid').addEventListener('click', e => {
+  const b = e.target.closest('button[data-iso]'); if (!b) return;
+  selISO = b.dataset.iso; renderCal();
+});
+
+/* ---------- render ---------- */
+function render() {
+  $('today').textContent = 'Today is ' + new Date().toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const q = $('q').value.trim();
+  $('hint').textContent = q ? (filtered().length + ' match' + (filtered().length === 1 ? '' : 'es')) : '';
+  if (tab === 'list') renderList(); else renderCal();
+}
+
+$('q').addEventListener('input', () => {
+  // in calendar view, jump to the month of the nearest match
+  if ($('q').value.trim() && tab === 'cal') {
+    const m = filtered().sort((a,b) => a.due.localeCompare(b.due));
+    if (m.length && !m.some(x => { const d = parseDate(x.due); return d.getFullYear() === viewY && d.getMonth() === viewM; })) {
+      const t = startOfDay(new Date());
+      const pick = m.find(x => parseDate(x.due) >= t) || m[m.length - 1];
+      const d = parseDate(pick.due); viewY = d.getFullYear(); viewM = d.getMonth(); selISO = pick.due;
+    }
+  }
+  render();
+});
+
+/* ---------- add / actions ---------- */
+function addMember() {
+  const name = $('name').value.trim(), due = $('due').value;
+  if (!name) { $('name').focus(); alert('Please enter a member name.'); return; }
+  if (!due) { $('due').focus(); alert('Please pick a due date.'); return; }
+  members.push({ id: Date.now().toString(36), name: name, due: due, cycle: +$('cycle').value, balance: parseFloat($('bal').value) || 0, phone: $('phone').value.trim() });
+  save();
+  $('name').value = ''; $('phone').value = ''; $('due').value = ''; $('bal').value = ''; $('cycle').value = '12';
+  render();
+}
+$('addBtn').addEventListener('click', addMember);
+$('form').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addMember(); } });
+
+function handleAction(e) {
+  const btn = e.target.closest('button[data-act]'); if (!btn) return;
+  const m = members.find(x => x.id === btn.dataset.id); if (!m) return;
+  const act = btn.dataset.act;
+  if (act === 'edit') { editingId = m.id; render(); return; }
+  if (act === 'cancel') { editingId = null; render(); return; }
+  if (act === 'hold') { m.hold = !m.hold; save(); render(); return; }
+  if (act === 'sms') {
+    const d = parseDate(m.due).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+    const verb = daysLeft(m.due) < 0 ? 'was due on' : 'is due on';
+    let msg = 'Hi ' + m.name + ', this is a reminder that your membership ' + verb + ' ' + d + '.';
+    if (parseFloat(m.balance) > 0) msg += ' Balance: ' + money(m.balance) + '.';
+    msg += ' Thank you!';
+    showSms(m, msg);
+    return;
+  }
+  if (act === 'save') {
+    const box = btn.closest('.item');
+    const get = f => box.querySelector('[data-f="' + f + '"]').value;
+    const name = get('name').trim(), due = get('due');
+    if (!name) { alert('Please enter a member name.'); return; }
+    if (!due) { alert('Please pick a due date.'); return; }
+    m.name = name; m.due = due; m.cycle = +get('cycle'); m.balance = parseFloat(get('bal')) || 0; m.phone = get('phone').trim();
+    editingId = null; save(); render(); return;
+  }
+  if (btn.dataset.act === 'paid') {
+    let next = addMonths(m.due, m.cycle);
+    while (daysLeft(next) < 0) next = addMonths(next, m.cycle);
+    m.due = next;
+  } else if (confirm('Remove ' + m.name + '?')) {
+    members = members.filter(x => x.id !== m.id);
+  }
+  save(); render();
+}
+$('list').addEventListener('click', handleAction);
+
+/* ---------- text reminder ---------- */
+let smsNum = '';
+function smsLink() { return 'sms:' + smsNum + '?&body=' + encodeURIComponent($('smsText').value); }
+function showSms(m, msg) {
+  smsNum = String(m.phone).replace(/[^\d+]/g, '');
+  $('smsTo').textContent = 'To: ' + m.name + ' · ' + m.phone;
+  $('smsText').value = msg;
+  $('smsGo').href = smsLink();
+  $('smsCopy').textContent = 'Copy message';
+  $('smsModal').classList.remove('hidden');
+}
+$('smsText').addEventListener('input', () => { $('smsGo').href = smsLink(); });
+$('smsClose').addEventListener('click', () => $('smsModal').classList.add('hidden'));
+$('smsModal').addEventListener('click', e => { if (e.target === $('smsModal')) $('smsModal').classList.add('hidden'); });
+$('smsCopy').addEventListener('click', () => {
+  const t = $('smsText'); t.focus(); t.select(); t.setSelectionRange(0, 99999);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  if (!ok && navigator.clipboard) { navigator.clipboard.writeText(t.value).then(() => { $('smsCopy').textContent = 'Copied!'; }).catch(() => {}); return; }
+  $('smsCopy').textContent = ok ? 'Copied!' : 'Press and hold to copy';
+});
+
+/* ---------- backup / restore ---------- */
+$('backupBtn').addEventListener('click', () => {
+  const data = JSON.stringify({ app:'membership-reminders', version:1, exported:new Date().toISOString(), members:members }, null, 2);
+  const url = URL.createObjectURL(new Blob([data], { type:'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'membership-backup-' + toISO(new Date()) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+$('restoreBtn').addEventListener('click', () => $('restoreFile').click());
+$('restoreFile').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const arr = Array.isArray(parsed) ? parsed : parsed.members;
+      if (!Array.isArray(arr)) throw new Error('bad format');
+      const clean = arr.filter(x => x && x.name && /^\d{4}-\d{2}-\d{2}$/.test(x.due)).map((x, i) => ({
+        id: x.id || (Date.now().toString(36) + i), name: String(x.name), due: x.due,
+        cycle: [1,3,6,12].includes(+x.cycle) ? +x.cycle : 12, balance: parseFloat(x.balance) || 0, hold: !!x.hold, phone: String(x.phone || '')
+      }));
+      if (!clean.length) throw new Error('empty');
+      if (!confirm('Replace the current list (' + members.length + ' members) with ' + clean.length + ' members from this backup?')) return;
+      members = clean; editingId = null; save(); render();
+      alert('Restored ' + clean.length + ' members.');
+    } catch (err) { alert('That file is not a valid membership backup.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+$('dayPanel').addEventListener('click', handleAction);
+
+render();
+</script>
+</body>
+</html>
